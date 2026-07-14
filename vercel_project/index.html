@@ -1232,7 +1232,7 @@ function fileToBase64(file){
     reader.readAsDataURL(file);
   });
 }
-async function uploadImageFile(file){
+async function uploadImageFile(file, meta){
   if(file.size > MAX_IMAGE_BYTES){
     throw new Error(`「${file.name}」は容量が大きすぎます（3MB程度までにしてください）`);
   }
@@ -1240,7 +1240,13 @@ async function uploadImageFile(file){
   const res = await fetch("/api/blob-upload", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ filename: file.name, contentType: file.type, dataBase64 }),
+    body: JSON.stringify({
+      filename: file.name,
+      contentType: file.type,
+      dataBase64,
+      shopName: (profileData && profileData.shopName) ? profileData.shopName : "",
+      label: (meta && meta.label) || "",
+    }),
   });
   const data = await res.json().catch(()=>({}));
   if(!res.ok){ throw new Error(data.error || "画像のアップロードに失敗しました"); }
@@ -1252,13 +1258,14 @@ async function collectWorkshopData(){
   const result = [];
   for(const entry of entries){
     const power = entry.querySelector(".power-group .radio-option.selected");
+    const n = entry.dataset.entry;
 
     let image1Url = entry.dataset.image1Url || "";
     let image2Url = entry.dataset.image2Url || "";
     const file1 = entry.querySelector('[data-field="image1file"]').files[0];
     const file2 = entry.querySelector('[data-field="image2file"]').files[0];
-    if(file1){ image1Url = await uploadImageFile(file1); entry.dataset.image1Url = image1Url; }
-    if(file2){ image2Url = await uploadImageFile(file2); entry.dataset.image2Url = image2Url; }
+    if(file1){ image1Url = await uploadImageFile(file1, { label: `ws${n}-image1` }); entry.dataset.image1Url = image1Url; }
+    if(file2){ image2Url = await uploadImageFile(file2, { label: `ws${n}-image2` }); entry.dataset.image2Url = image2Url; }
 
     result.push({
       name: entry.querySelector('[data-field="name"]').value,
