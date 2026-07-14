@@ -1,0 +1,10 @@
+{
+  "name": "wakuwaku-park-booking",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "夏のよりみち わくわくパーク 出店申込・日程調整ツール",
+  "dependencies": {
+    "@upstash/redis": "^1.38.0"
+  }
+}
