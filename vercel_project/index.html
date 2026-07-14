@@ -616,6 +616,7 @@
   <div class="tabs">
     <div class="tab active" data-admin-tab="requests">出店申請</div>
     <div class="tab" data-admin-tab="vendors">出店者一覧</div>
+    <div class="tab" data-admin-tab="workshops">ワークショップ一覧</div>
   </div>
 
   <div class="admin-panel active" data-admin-panel="requests">
@@ -626,6 +627,11 @@
   <div class="admin-panel" data-admin-panel="vendors">
     <button type="button" class="btn cancel" id="vendorRefreshBtn" style="width:100%; margin-bottom:16px;">🔄 最新の登録内容を取得</button>
     <div id="vendorList"></div>
+  </div>
+
+  <div class="admin-panel" data-admin-panel="workshops">
+    <button type="button" class="btn cancel" id="workshopListRefreshBtn" style="width:100%; margin-bottom:16px;">🔄 最新の登録内容を取得</button>
+    <div id="workshopFlatList"></div>
   </div>
 </div>
 
@@ -1094,6 +1100,44 @@ document.getElementById("vendorRefreshBtn").addEventListener("click", async ()=>
   renderVendorList();
 });
 
+/* ---------- ワークショップ一覧（店舗をまたいでフラットに表示） ---------- */
+function renderWorkshopFlatList(){
+  const wrap = document.getElementById("workshopFlatList");
+  const items = [];
+  Object.values(vendorDirectory).forEach(v=>{
+    const shopName = (v.profile && v.profile.shopName) || "（ショップ名未入力）";
+    (v.workshops || []).forEach(w=>{
+      if(w.name || w.desc){ items.push({ ...w, shopName }); }
+    });
+  });
+
+  if(!items.length){
+    wrap.innerHTML = `<div class="empty-note">まだ登録されたワークショップはありません。</div>`;
+    return;
+  }
+  items.sort((a,b)=> a.shopName.localeCompare(b.shopName, "ja"));
+
+  wrap.innerHTML = items.map(w=>{
+    const imgs = [];
+    if(w.image1Url) imgs.push(`<a href="${w.image1Url}" target="_blank">画像①</a>`);
+    if(w.image2Url) imgs.push(`<a href="${w.image2Url}" target="_blank">画像②</a>`);
+    return `<div class="vendor-card">
+      <div class="v-head">
+        <div class="v-name">${escapeHtml(w.name || "（名称未入力）")}</div>
+      </div>
+      <div class="v-line">出店者：${escapeHtml(w.shopName)}</div>
+      <div class="v-intro">${escapeHtml(w.desc || "")}</div>
+      <div class="v-line">体験時間：${escapeHtml(w.time || "-")}　金額：${escapeHtml(String(w.price ?? "-"))}円</div>
+      <div class="v-line">電源：${w.power==="yes" ? "あり（"+escapeHtml(w.powerDetail||"")+"）" : "なし"}</div>
+      ${imgs.length ? `<div class="v-ws-imgs" style="margin-top:8px;">${imgs.join("")}</div>` : ""}
+    </div>`;
+  }).join("");
+}
+document.getElementById("workshopListRefreshBtn").addEventListener("click", async ()=>{
+  await loadVendorDirectory();
+  renderWorkshopFlatList();
+});
+
 document.getElementById("openAdminBtn").addEventListener("click", ()=>{
   if(getAdminPassword()){
     // このセッションで入力済みならログインを省略して直接承認画面へ
@@ -1202,6 +1246,9 @@ document.querySelectorAll("#adminFormView [data-admin-tab]").forEach(tab=>{
     document.querySelectorAll("#adminFormView .admin-panel").forEach(p=> p.classList.toggle("active", p.dataset.adminPanel===tab.dataset.adminTab));
     if(tab.dataset.adminTab === "vendors"){
       loadVendorDirectory().then(renderVendorList);
+    }
+    if(tab.dataset.adminTab === "workshops"){
+      loadVendorDirectory().then(renderWorkshopFlatList);
     }
   });
 });
