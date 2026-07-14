@@ -5,6 +5,7 @@
   "type": "module",
   "description": "夏のよりみち わくわくパーク 出店申込・日程調整ツール",
   "dependencies": {
-    "@upstash/redis": "^1.38.0"
+    "@upstash/redis": "^1.38.0",
+    "@vercel/blob": "^2.6.1"
   }
 }
