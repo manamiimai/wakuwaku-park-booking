@@ -397,6 +397,25 @@
   .admin-row .sub{ font-size:11px; color:var(--ink-soft); margin-bottom:10px; }
   .admin-row .btn-row .btn{ padding:10px; font-size:12.5px; }
   .admin-row.is-approved{ background:#F4F1E6; }
+  .admin-panel{ display:none; }
+  .admin-panel.active{ display:block; }
+  .vendor-card{
+    background:var(--card); border:1px solid var(--line); border-radius:16px;
+    padding:18px 20px; margin-bottom:14px;
+  }
+  .vendor-card .v-head{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:6px; }
+  .vendor-card .v-name{ font-family:"Zen Maru Gothic", sans-serif; font-size:17px; font-weight:900; }
+  .vendor-card .v-updated{ font-size:10.5px; color:var(--ink-soft); white-space:nowrap; }
+  .vendor-card .v-line{ font-size:12.5px; color:var(--ink-soft); margin-bottom:3px; }
+  .vendor-card .v-intro{ font-size:12.5px; margin:10px 0; line-height:1.7; }
+  .vendor-card .v-ws{
+    border-top:1px dashed var(--line); padding-top:10px; margin-top:10px;
+  }
+  .vendor-card .v-ws-item{ margin-bottom:10px; }
+  .vendor-card .v-ws-item b{ font-size:13px; display:block; }
+  .vendor-card .v-ws-item span{ font-size:11.5px; color:var(--ink-soft); }
+  .vendor-card .v-ws-imgs{ display:flex; gap:8px; margin-top:6px; }
+  .vendor-card .v-ws-imgs a{ font-size:11px; font-weight:800; color:var(--marigold-deep); text-decoration:none; }
 
   footer{ text-align:center; font-size:11px; color:var(--ink-soft); margin-top:20px; line-height:1.8; }
 </style>
@@ -462,7 +481,7 @@
 
   <div class="todo-wrap">
     <div class="section-head"><h2>やることリスト</h2></div>
-    <div class="tabs">
+    <div class="tabs" id="todoTabs">
       <div class="tab active" data-tab="now">①今すぐ</div>
       <div class="tab" data-tab="until">②3日前まで</div>
       <div class="tab" data-tab="day">③当日</div>
@@ -592,9 +611,22 @@
     <div class="back-btn" data-back>‹</div>
     <h2>主催者用 承認画面</h2>
   </div>
-  <div class="form-note">この画面の申請データは、このページを開いた全員で共有されています。承認・却下すると出店者側の画面にも反映されます。</div>
-  <button type="button" class="btn cancel" id="adminRefreshBtn" style="width:100%; margin-bottom:16px;">🔄 最新の申請を取得</button>
-  <div id="adminList"></div>
+  <div class="form-note">この画面のデータは、このページを開いた全員で共有されています。承認・却下すると出店者側の画面にも反映されます。</div>
+
+  <div class="tabs">
+    <div class="tab active" data-admin-tab="requests">出店申請</div>
+    <div class="tab" data-admin-tab="vendors">出店者一覧</div>
+  </div>
+
+  <div class="admin-panel active" data-admin-panel="requests">
+    <button type="button" class="btn cancel" id="adminRefreshBtn" style="width:100%; margin-bottom:16px;">🔄 最新の申請を取得</button>
+    <div id="adminList"></div>
+  </div>
+
+  <div class="admin-panel" data-admin-panel="vendors">
+    <button type="button" class="btn cancel" id="vendorRefreshBtn" style="width:100%; margin-bottom:16px;">🔄 最新の登録内容を取得</button>
+    <div id="vendorList"></div>
+  </div>
 </div>
 
 <div class="overlay" id="overlay">
@@ -997,6 +1029,71 @@ document.getElementById("adminRefreshBtn").addEventListener("click", async ()=>{
   renderAdminList();
 });
 
+/* ---------- 出店者一覧（プロフィール・ワークショップ内容の共有ディレクトリ） ---------- */
+let vendorDirectory = {};
+
+async function loadVendorDirectory(){
+  const res = await safeGet("vendorDirectory", true);
+  try{ vendorDirectory = res && res.value ? JSON.parse(res.value) : {}; }catch(e){ vendorDirectory = {}; }
+  return vendorDirectory;
+}
+
+// この端末（出店者）のプロフィール・ワークショップ内容を、主催者用の共有一覧に反映する
+async function saveVendorEntry(partial){
+  await loadVendorDirectory();
+  const existing = vendorDirectory[DEVICE_ID] || {};
+  vendorDirectory[DEVICE_ID] = {
+    ...existing,
+    ...partial,
+    updatedAt: new Date().toISOString(),
+  };
+  await safeSet("vendorDirectory", JSON.stringify(vendorDirectory), true);
+}
+
+function renderVendorList(){
+  const wrap = document.getElementById("vendorList");
+  const entries = Object.values(vendorDirectory).filter(v => v.profile || (v.workshops && v.workshops.length));
+  if(!entries.length){
+    wrap.innerHTML = `<div class="empty-note">まだ登録された出店者はいません。</div>`;
+    return;
+  }
+  entries.sort((a,b)=> new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+
+  wrap.innerHTML = entries.map(v=>{
+    const p = v.profile || {};
+    const updated = v.updatedAt ? new Date(v.updatedAt).toLocaleString("ja-JP") : "";
+    const wsHtml = (v.workshops || []).map(w=>{
+      const imgs = [];
+      if(w.image1Url) imgs.push(`<a href="${w.image1Url}" target="_blank">画像①</a>`);
+      if(w.image2Url) imgs.push(`<a href="${w.image2Url}" target="_blank">画像②</a>`);
+      return `<div class="v-ws-item">
+        <b>${escapeHtml(w.name || "（名称未入力）")}</b>
+        <span>${escapeHtml(w.desc || "")}</span><br>
+        <span>体験時間：${escapeHtml(w.time || "-")}　金額：${escapeHtml(String(w.price ?? "-"))}円　電源：${w.power==="yes" ? "あり（"+escapeHtml(w.powerDetail||"")+"）" : "なし"}</span>
+        ${imgs.length ? `<div class="v-ws-imgs">${imgs.join("")}</div>` : ""}
+      </div>`;
+    }).join("");
+
+    return `<div class="vendor-card">
+      <div class="v-head">
+        <div class="v-name">${escapeHtml(p.shopName || "（ショップ名未入力）")}</div>
+        <div class="v-updated">更新：${updated}</div>
+      </div>
+      <div class="v-line">責任者：${escapeHtml(p.ownerName || "-")}</div>
+      <div class="v-line">📞 ${escapeHtml(p.phone || "-")}　✉️ ${escapeHtml(p.email || "-")}</div>
+      ${p.instagram ? `<div class="v-line">📷 ${escapeHtml(p.instagram)}</div>` : ""}
+      ${p.intro ? `<div class="v-intro">${escapeHtml(p.intro)}</div>` : ""}
+      ${p.license ? `<div class="v-line">所持資格：${escapeHtml(p.license)}</div>` : ""}
+      ${wsHtml ? `<div class="v-ws">${wsHtml}</div>` : ""}
+    </div>`;
+  }).join("");
+}
+
+document.getElementById("vendorRefreshBtn").addEventListener("click", async ()=>{
+  await loadVendorDirectory();
+  renderVendorList();
+});
+
 document.getElementById("openAdminBtn").addEventListener("click", ()=>{
   if(getAdminPassword()){
     // このセッションで入力済みならログインを省略して直接承認画面へ
@@ -1094,8 +1191,19 @@ function switchTab(tabKey){
   document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.tab===tabKey));
   document.querySelectorAll(".todo-panel").forEach(p=>p.classList.toggle("active", p.dataset.panel===tabKey));
 }
-document.querySelectorAll(".tab").forEach(tab=>{
+document.querySelectorAll("#todoTabs .tab").forEach(tab=>{
   tab.addEventListener("click", ()=> switchTab(tab.dataset.tab));
+});
+
+/* ---------- 主催者画面のタブ切り替え（出店申請／出店者一覧） ---------- */
+document.querySelectorAll("#adminFormView [data-admin-tab]").forEach(tab=>{
+  tab.addEventListener("click", ()=>{
+    document.querySelectorAll("#adminFormView [data-admin-tab]").forEach(t=> t.classList.toggle("active", t===tab));
+    document.querySelectorAll("#adminFormView .admin-panel").forEach(p=> p.classList.toggle("active", p.dataset.adminPanel===tab.dataset.adminTab));
+    if(tab.dataset.adminTab === "vendors"){
+      loadVendorDirectory().then(renderVendorList);
+    }
+  });
 });
 
 /* ---------- 画面遷移（プロフィール／ワークショップ／搬入申請フォーム） ---------- */
@@ -1138,6 +1246,7 @@ document.getElementById("profileForm").addEventListener("submit", async (e)=>{
     license: document.getElementById("p_license").value,
   };
   await safeSet("profile", JSON.stringify(profileData), false);
+  await saveVendorEntry({ profile: profileData });
   formState.profile = true;
   const statusEl = document.getElementById("statusProfile");
   statusEl.textContent = "入力済み";
@@ -1317,6 +1426,7 @@ document.getElementById("workshopForm").addEventListener("submit", async (e)=>{
   try{
     const workshopsData = await collectWorkshopData();
     await safeSet("workshops", JSON.stringify(workshopsData), false);
+    await saveVendorEntry({ workshops: workshopsData });
     formState.workshop = true;
     const statusEl = document.getElementById("statusWorkshop");
     statusEl.textContent = "入力済み";
