@@ -322,6 +322,8 @@
     font-size:11.5px; color:var(--ink-soft);
   }
   .file-input-wrap input[type="file"]{ width:100%; font-size:12px; margin-bottom:6px; }
+  .existing-image{ margin-top:6px; }
+  .existing-image a{ font-size:11.5px; font-weight:800; color:var(--marigold-deep); text-decoration:none; }
   .form-submit{ width:100%; margin-top:6px; }
 
   .workshop-entry{
@@ -1159,6 +1161,8 @@ function addWorkshopEntry(prefill){
   const wrap = document.createElement("div");
   wrap.className = "workshop-entry";
   wrap.dataset.entry = n;
+  wrap.dataset.image1Url = p.image1Url || "";
+  wrap.dataset.image2Url = p.image2Url || "";
   wrap.innerHTML = `
     <div class="entry-head"><b>ワークショップ ${n}</b><span class="remove-entry" data-remove-workshop="${n}">削除</span></div>
     <div class="field">
@@ -1192,11 +1196,15 @@ function addWorkshopEntry(prefill){
     <div class="img-pair">
       <div class="field">
         <label>画像①</label>
-        <div class="file-input-wrap"><input type="file" accept="image/*"></div>
+        <div class="field-note">3MB程度までの画像をお使いください</div>
+        <div class="file-input-wrap"><input type="file" accept="image/*" data-field="image1file"></div>
+        <div class="existing-image" data-role="image1preview">${p.image1Url ? `<a href="${p.image1Url}" target="_blank">✅ 現在の画像を見る</a>` : ""}</div>
       </div>
       <div class="field">
         <label>画像②</label>
-        <div class="file-input-wrap"><input type="file" accept="image/*"></div>
+        <div class="field-note">3MB程度までの画像をお使いください</div>
+        <div class="file-input-wrap"><input type="file" accept="image/*" data-field="image2file"></div>
+        <div class="existing-image" data-role="image2preview">${p.image2Url ? `<a href="${p.image2Url}" target="_blank">✅ 現在の画像を見る</a>` : ""}</div>
       </div>
     </div>`;
   document.getElementById("workshopItems").appendChild(wrap);
@@ -1212,18 +1220,58 @@ function updateWorkshopRemoveButtons(){
     en.querySelector(".remove-entry").style.display = entries.length > 1 ? "inline" : "none";
   });
 }
-function collectWorkshopData(){
-  return Array.from(document.querySelectorAll(".workshop-entry")).map(entry=>{
+
+/* ---------- 画像アップロード（Vercel Blob） ---------- */
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024; // 3MB
+
+function fileToBase64(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+    reader.onerror = () => reject(new Error("ファイルの読み込みに失敗しました"));
+    reader.readAsDataURL(file);
+  });
+}
+async function uploadImageFile(file){
+  if(file.size > MAX_IMAGE_BYTES){
+    throw new Error(`「${file.name}」は容量が大きすぎます（3MB程度までにしてください）`);
+  }
+  const dataBase64 = await fileToBase64(file);
+  const res = await fetch("/api/blob-upload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filename: file.name, contentType: file.type, dataBase64 }),
+  });
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok){ throw new Error(data.error || "画像のアップロードに失敗しました"); }
+  return data.url;
+}
+
+async function collectWorkshopData(){
+  const entries = Array.from(document.querySelectorAll(".workshop-entry"));
+  const result = [];
+  for(const entry of entries){
     const power = entry.querySelector(".power-group .radio-option.selected");
-    return {
+
+    let image1Url = entry.dataset.image1Url || "";
+    let image2Url = entry.dataset.image2Url || "";
+    const file1 = entry.querySelector('[data-field="image1file"]').files[0];
+    const file2 = entry.querySelector('[data-field="image2file"]').files[0];
+    if(file1){ image1Url = await uploadImageFile(file1); entry.dataset.image1Url = image1Url; }
+    if(file2){ image2Url = await uploadImageFile(file2); entry.dataset.image2Url = image2Url; }
+
+    result.push({
       name: entry.querySelector('[data-field="name"]').value,
       desc: entry.querySelector('[data-field="desc"]').value,
       time: entry.querySelector('[data-field="time"]').value,
       price: entry.querySelector('[data-field="price"]').value,
       power: power ? power.dataset.value : "",
       powerDetail: entry.querySelector('[data-field="powerDetail"]').value,
-    };
-  });
+      image1Url,
+      image2Url,
+    });
+  }
+  return result;
 }
 document.getElementById("addWorkshopBtn").addEventListener("click", ()=> addWorkshopEntry());
 document.getElementById("workshopItems").addEventListener("click", (e)=>{
@@ -1245,13 +1293,24 @@ document.getElementById("workshopItems").addEventListener("click", (e)=>{
 
 document.getElementById("workshopForm").addEventListener("submit", async (e)=>{
   e.preventDefault();
-  const workshopsData = collectWorkshopData();
-  await safeSet("workshops", JSON.stringify(workshopsData), false);
-  formState.workshop = true;
-  const statusEl = document.getElementById("statusWorkshop");
-  statusEl.textContent = "入力済み";
-  statusEl.classList.add("filled");
-  closeForm();
+  const submitBtn = e.target.querySelector(".form-submit");
+  const originalLabel = submitBtn.textContent;
+  submitBtn.disabled = true;
+  submitBtn.textContent = "画像をアップロード中...";
+  try{
+    const workshopsData = await collectWorkshopData();
+    await safeSet("workshops", JSON.stringify(workshopsData), false);
+    formState.workshop = true;
+    const statusEl = document.getElementById("statusWorkshop");
+    statusEl.textContent = "入力済み";
+    statusEl.classList.add("filled");
+    closeForm();
+  }catch(err){
+    alert(err.message || "保存に失敗しました。もう一度お試しください。");
+  }finally{
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalLabel;
+  }
 });
 async function loadWorkshops(){
   const res = await safeGet("workshops", false);
