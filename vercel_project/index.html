@@ -1058,7 +1058,7 @@ async function saveVendorEntry(partial){
 
 function renderVendorList(){
   const wrap = document.getElementById("vendorList");
-  const entries = Object.values(vendorDirectory).filter(v => v.profile || (v.workshops && v.workshops.length));
+  const entries = Object.values(vendorDirectory).filter(v => v.profile || (v.workshops && v.workshops.length) || v.entryInfo);
   if(!entries.length){
     wrap.innerHTML = `<div class="empty-note">まだ登録された出店者はいません。</div>`;
     return;
@@ -1067,6 +1067,7 @@ function renderVendorList(){
 
   wrap.innerHTML = entries.map(v=>{
     const p = v.profile || {};
+    const en = v.entryInfo || null;
     const updated = v.updatedAt ? new Date(v.updatedAt).toLocaleString("ja-JP") : "";
     const wsHtml = (v.workshops || []).map(w=>{
       const imgs = [];
@@ -1079,6 +1080,13 @@ function renderVendorList(){
         ${imgs.length ? `<div class="v-ws-imgs">${imgs.join("")}</div>` : ""}
       </div>`;
     }).join("");
+    const entryHtml = en ? `<div class="v-ws">
+        <div class="v-ws-item">
+          <b>当日搬入時間・入店者申請</b>
+          <span>搬入予定時刻：${escapeHtml(en.time || "-")}　代表者：${escapeHtml(en.name || "-")}</span><br>
+          <span>同行者：${en.companions && en.companions.length ? escapeHtml(en.companions.join("、")) : "なし"}</span>
+        </div>
+      </div>` : "";
 
     return `<div class="vendor-card">
       <div class="v-head">
@@ -1091,6 +1099,7 @@ function renderVendorList(){
       ${p.intro ? `<div class="v-intro">${escapeHtml(p.intro)}</div>` : ""}
       ${p.license ? `<div class="v-line">所持資格：${escapeHtml(p.license)}</div>` : ""}
       ${wsHtml ? `<div class="v-ws">${wsHtml}</div>` : ""}
+      ${entryHtml}
     </div>`;
   }).join("");
 }
@@ -1529,6 +1538,7 @@ document.getElementById("entryForm").addEventListener("submit", async (e)=>{
     companions: Array.from(document.querySelectorAll("#otherNames input")).map(i=>i.value).filter(v=>v),
   };
   await safeSet("entryInfo", JSON.stringify(entryInfoData), false);
+  await saveVendorEntry({ entryInfo: entryInfoData });
   formState.entry = true;
   closeForm();
   switchTab("until");
