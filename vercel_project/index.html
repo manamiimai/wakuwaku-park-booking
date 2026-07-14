@@ -815,7 +815,7 @@ function renderApplicationStatus(){
     wrap.innerHTML = `<div class="empty-note">まだ申請はありません。下のリストから出店したい日を選んでください。</div>`;
     return;
   }
-  wrap.innerHTML = myApplications.map(app=>{
+  wrap.innerHTML = myApplications.map((app, i)=>{
     const rec = allBookings[bookingKey(app.dateKey, app.boothKey)];
     const status = rec ? rec.status : "rejected";
     const booth = boothNames.find(b=>b.key===app.boothKey);
@@ -825,10 +825,20 @@ function renderApplicationStatus(){
     const sub = status==="approved" ? "出店が確定しました" : status==="pending" ? "主催者の承認をお待ちください" : "この申請は見送りとなりました（再度申請できます）";
     return `<div class="status-card">
       <div class="info"><b>${m}月${d}日（${dow}）／${booth ? booth.name : ""}</b><span>${sub}</span></div>
-      <div class="status-pill ${status}">${label}</div>
+      ${status==="rejected"
+        ? `<button type="button" class="btn cancel" style="padding:8px 14px; font-size:11px;" data-dismiss="${i}">確認しました</button>`
+        : `<div class="status-pill ${status}">${label}</div>`}
     </div>`;
   }).join("");
 }
+document.getElementById("applicationStatusList").addEventListener("click", async (e)=>{
+  const idx = e.target.dataset.dismiss;
+  if(idx === undefined) return;
+  myApplications.splice(Number(idx), 1);
+  await safeSet("myApplications", JSON.stringify(myApplications), false);
+  renderApplicationStatus();
+  renderCalendar();
+});
 document.getElementById("refreshStatusBtn").addEventListener("click", async ()=>{
   await loadAllBookings();
   renderCalendar();
